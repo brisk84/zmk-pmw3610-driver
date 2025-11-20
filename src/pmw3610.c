@@ -564,9 +564,24 @@ static bool is_layer_ignored(uint8_t layer) {
     return false;
 }
 
+static bool is_any_ignored_layer_active() {
+    if (pmw3610_dev == NULL) {
+        return false;
+    }
+    const struct pixart_config *config = pmw3610_dev->config;
+
+    // Check all ignored layers to see if any are currently active
+    for (size_t i = 0; i < config->automouse_ignored_layers_len; i++) {
+        if (zmk_keymap_layer_active(config->automouse_ignored_layers[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void activate_automouse_layer() {
-    uint8_t highest_layer = zmk_keymap_highest_layer_active();
-    if (is_layer_ignored(highest_layer)) {
+    // Don't activate if any ignored layer is active
+    if (is_any_ignored_layer_active()) {
         return;
     }
 
@@ -587,12 +602,10 @@ static void deactivate_automouse_layer(struct k_timer *timer) {
 }
 
 static int pmw3610_layer_state_changed_listener(const zmk_event_t *eh) {
-    if (automouse_triggered) {
-        uint8_t highest_layer = zmk_keymap_highest_layer_active();
-        if (is_layer_ignored(highest_layer)) {
-            k_timer_stop(&automouse_layer_timer);
-            deactivate_automouse_layer(NULL);
-        }
+    // Immediately deactivate automouse if any ignored layer becomes active
+    if (is_any_ignored_layer_active() && automouse_triggered) {
+        k_timer_stop(&automouse_layer_timer);
+        deactivate_automouse_layer(NULL);
     }
     return 0;
 }
