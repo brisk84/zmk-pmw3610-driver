@@ -15,6 +15,7 @@
 #include <zephyr/input/input.h>
 #include <zmk/keymap.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/events/keycode_state_changed.h>
 #include "pmw3610.h"
 
 #include <zephyr/logging/log.h>
@@ -548,6 +549,7 @@ static void pmw3610_async_init(struct k_work *work) {
 struct k_timer automouse_layer_timer;
 static bool automouse_triggered = false;
 static const struct device *pmw3610_dev = NULL;
+static int64_t last_keypress_time = 0;
 
 static bool is_layer_ignored(uint8_t layer) {
     if (pmw3610_dev == NULL) {
@@ -567,6 +569,13 @@ static void activate_automouse_layer() {
     if (is_layer_ignored(highest_layer)) {
         return;
     }
+
+    // Check if enough time has passed since last keypress
+    int64_t current_time = k_uptime_get();
+    if (current_time - last_keypress_time < CONFIG_PMW3610_AUTOMOUSE_KEYPRESS_DELAY_MS) {
+        return;
+    }
+
     automouse_triggered = true;
     zmk_keymap_layer_activate(AUTOMOUSE_LAYER);
     k_timer_start(&automouse_layer_timer, K_MSEC(CONFIG_PMW3610_AUTOMOUSE_TIMEOUT_MS), K_NO_WAIT);
@@ -588,8 +597,17 @@ static int pmw3610_layer_state_changed_listener(const zmk_event_t *eh) {
     return 0;
 }
 
+static int pmw3610_keycode_state_changed_listener(const zmk_event_t *eh) {
+    // Update timestamp on any keypress
+    last_keypress_time = k_uptime_get();
+    return 0;
+}
+
 ZMK_LISTENER(pmw3610, pmw3610_layer_state_changed_listener);
 ZMK_SUBSCRIPTION(pmw3610, zmk_layer_state_changed);
+
+ZMK_LISTENER(pmw3610_keypress, pmw3610_keycode_state_changed_listener);
+ZMK_SUBSCRIPTION(pmw3610_keypress, zmk_keycode_state_changed);
 
 K_TIMER_DEFINE(automouse_layer_timer, deactivate_automouse_layer, NULL);
 #endif
